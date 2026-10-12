@@ -6,48 +6,19 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Conexão com o PostgreSQL do Supabase via variável de ambiente do Render
+// Conexão explícita para evitar falhas de leitura na URL com pontos no utilizador
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    user: 'postgres.lzsysfyagmoscypffzxc',
+    password: 'Cavalo0021804',
+    host: 'aws-0-us-east-1.pooler.supabase.com',
+    database: 'postgres',
+    port: 6543,
     ssl: {
         rejectUnauthorized: false
-    }
+    },
+    family: 4
 });
 
-// 1. ROTA: Bater Ponto (Funcionário) - Impede duplicidade no mesmo dia
-app.post('/api/ponto', async (req, res) => {
-    const { nome } = req.body;
-
-    if (!nome || !nome.trim()) {
-        return res.status(400).json({ erro: 'Nome é obrigatório.' });
-    }
-
-    const nomeFormatado = nome.trim().toLowerCase();
-
-    try {
-        const hojeCheck = await pool.query(
-            `SELECT * FROM pontos 
-             WHERE LOWER(nome) = $1 
-             AND DATE(data_hora) = CURRENT_DATE 
-             AND desconsiderado = FALSE`,
-            [nomeFormatado]
-        );
-
-        if (hojeCheck.rows.length > 0) {
-            return res.status(400).json({ erro: 'Você já bateu ponto hoje!' });
-        }
-
-        await pool.query(
-            `INSERT INTO pontos (nome, data_hora, pago, desconsiderado) VALUES ($1, NOW(), FALSE, FALSE)`,
-            [nome.trim()]
-        );
-
-        res.status(201).json({ mensagem: 'Ponto batido com sucesso!' });
-    } catch (err) {
-        console.error("ERRO COMPLETO AO REGISTRAR PONTO:", err); // <--- Este log vai mostrar o erro exato
-        res.status(500).json({ erro: 'Erro interno no servidor ao registrar ponto: ' + err.message });
-    }
-});
 
 // 2. ROTA: Dados do Painel do Pai (Resumo e Histórico)
 app.get('/api/painel', async (req, res) => {
