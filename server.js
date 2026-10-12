@@ -44,8 +44,8 @@ app.post('/api/ponto', async (req, res) => {
 
         res.status(201).json({ mensagem: 'Ponto batido com sucesso!' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ erro: 'Erro interno no servidor ao registrar ponto.' });
+        console.error("ERRO COMPLETO AO REGISTRAR PONTO:", err); // <--- Este log vai mostrar o erro exato
+        res.status(500).json({ erro: 'Erro interno no servidor ao registrar ponto: ' + err.message });
     }
 });
 
