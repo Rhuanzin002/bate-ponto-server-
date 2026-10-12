@@ -6,13 +6,13 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Conexão explícita para evitar falhas de leitura na URL com pontos no utilizador
+// Conexão direta com o Supabase (Porta 5432) - Sem falhas de autenticação
 const pool = new Pool({
-    user: 'postgres.lzsysfyagmoscypffzxc',
+    user: 'postgres',
     password: 'Cavalo0021804',
-    host: 'aws-0-us-east-1.pooler.supabase.com',
+    host: 'db.lzsysfyagmoscypffzxc.supabase.co',
     database: 'postgres',
-    port: 6543,
+    port: 5432,
     ssl: {
         rejectUnauthorized: false
     },
