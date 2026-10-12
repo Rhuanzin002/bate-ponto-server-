@@ -8,15 +8,8 @@ app.use(cors());
 
 // Conexão direta com o Supabase (Porta 5432) - Sem falhas de autenticação
 const pool = new Pool({
-    user: 'postgres',
-    password: 'Cavalo0021804',
-    host: 'db.lzsysfyagmoscypffzxc.supabase.co',
-    database: 'postgres',
-    port: 5432,
-    ssl: {
-        rejectUnauthorized: false
-    },
-    family: 4
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
 });
 
 // 1. ROTA: Bater Ponto (Funcionário) - Impede duplicidade no mesmo dia
