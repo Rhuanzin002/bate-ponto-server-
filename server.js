@@ -6,7 +6,30 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Conexão direta com o Supabase (Porta 5432) - Sem falhas de autenticação
+// ================== SENHA DO PAINEL ==================
+// >>> COLOQUE AQUI A SENHA DESEJADA (entre as aspas) <<<
+// Se existir a variável PAINEL_SENHA no Render, ela tem prioridade.
+const SENHA_PAINEL = process.env.PAINEL_SENHA || 'Gui1804';
+// =====================================================
+
+const crypto = require('crypto');
+
+function senhaCorreta(tentativa) {
+    const a = crypto.createHash('sha256').update(String(tentativa || '')).digest();
+    const b = crypto.createHash('sha256').update(SENHA_PAINEL).digest();
+    return crypto.timingSafeEqual(a, b);
+}
+
+function exigirSenha(req, res, next) {
+    if (senhaCorreta(req.get('x-painel-senha'))) return next();
+    return res.status(401).json({ erro: 'Senha incorreta ou ausente.' });
+}
+
+// Usada pelo painel para validar a senha digitada
+app.get('/api/login', exigirSenha, (req, res) => res.json({ ok: true }));
+
+
+// Conexão via variável de ambiente DATABASE_URL (transaction pooler do Supabase)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
@@ -48,7 +71,7 @@ app.post('/api/ponto', async (req, res) => {
 });
 
 // 2. ROTA: Dados do Painel do Pai (Resumo e Histórico)
-app.get('/api/painel', async (req, res) => {
+app.get('/api/painel', exigirSenha, async (req, res) => {
     try {
         const historicoRes = await pool.query(
             `SELECT id, nome, data_hora as "dataHora", pago, desconsiderado FROM pontos ORDER BY data_hora DESC`
@@ -79,7 +102,7 @@ app.get('/api/painel', async (req, res) => {
 });
 
 // 3. ROTA: Marcar como Pago (Zera os pontos pendentes daquele funcionário)
-app.post('/api/pagar', async (req, res) => {
+app.post('/api/pagar', exigirSenha, async (req, res) => {
     const { nome } = req.body;
 
     if (!nome) {
@@ -100,7 +123,7 @@ app.post('/api/pagar', async (req, res) => {
 });
 
 // 4. ROTA: Desconsiderar Ponto Falso
-app.patch('/api/ponto/:id/desconsiderar', async (req, res) => {
+app.patch('/api/ponto/:id/desconsiderar', exigirSenha, async (req, res) => {
     const { id } = req.params;
 
     try {
