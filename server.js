@@ -3,12 +3,10 @@ const { Pool } = require('pg');
 const cors = require('cors');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Aumenta o limite para aceitar imagens em Base64
 app.use(cors());
 
 // ================== SENHA DO PAINEL ==================
-// >>> COLOQUE AQUI A SENHA DESEJADA (entre as aspas) <<<
-// Se existir a variável PAINEL_SENHA no Render, ela tem prioridade.
 const SENHA_PAINEL = process.env.PAINEL_SENHA || 'Gui1804';
 // =====================================================
 
@@ -28,19 +26,22 @@ function exigirSenha(req, res, next) {
 // Usada pelo painel para validar a senha digitada
 app.get('/api/login', exigirSenha, (req, res) => res.json({ ok: true }));
 
-
 // Conexão via variável de ambiente DATABASE_URL (transaction pooler do Supabase)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
 
-// 1. ROTA: Bater Ponto (Funcionário) - Impede duplicidade no mesmo dia
+// 1. ROTA: Bater Ponto (Funcionário com Selfie)
 app.post('/api/ponto', async (req, res) => {
-    const { nome } = req.body;
+    const { nome, selfie } = req.body;
 
     if (!nome || !nome.trim()) {
         return res.status(400).json({ erro: 'Nome é obrigatório.' });
+    }
+
+    if (!selfie) {
+        return res.status(400).json({ erro: 'A selfie é obrigatória.' });
     }
 
     const nomeFormatado = nome.trim().toLowerCase();
@@ -59,8 +60,8 @@ app.post('/api/ponto', async (req, res) => {
         }
 
         await pool.query(
-            `INSERT INTO pontos (nome, data_hora, pago, desconsiderado) VALUES ($1, NOW(), FALSE, FALSE)`,
-            [nome.trim()]
+            `INSERT INTO pontos (nome, data_hora, pago, desconsiderado, selfie) VALUES ($1, NOW(), FALSE, FALSE, $2)`,
+            [nome.trim(), selfie]
         );
 
         res.status(201).json({ mensagem: 'Ponto batido com sucesso!' });
@@ -70,11 +71,11 @@ app.post('/api/ponto', async (req, res) => {
     }
 });
 
-// 2. ROTA: Dados do Painel do Pai (Resumo e Histórico)
+// 2. ROTA: Dados do Painel do Pai (Inclui a selfie no histórico)
 app.get('/api/painel', exigirSenha, async (req, res) => {
     try {
         const historicoRes = await pool.query(
-            `SELECT id, nome, data_hora as "dataHora", pago, desconsiderado FROM pontos ORDER BY data_hora DESC`
+            `SELECT id, nome, data_hora as "dataHora", pago, desconsiderado, selfie FROM pontos ORDER BY data_hora DESC`
         );
 
         const resumoRes = await pool.query(
@@ -101,7 +102,7 @@ app.get('/api/painel', exigirSenha, async (req, res) => {
     }
 });
 
-// 3. ROTA: Marcar como Pago (Zera os pontos pendentes daquele funcionário)
+// 3. ROTA: Marcar como Pago
 app.post('/api/pagar', exigirSenha, async (req, res) => {
     const { nome } = req.body;
 
