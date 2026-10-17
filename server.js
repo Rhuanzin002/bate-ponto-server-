@@ -77,7 +77,7 @@ app.post('/api/ponto', async (req, res) => {
     }
 });
 
-// 2. ROTA: Dados do Painel do Pai (Inclui a selfie no histórico)
+// 2. ROTA: Dados do Painel do Pai (Agrupa ignorando maiúsculas/minúsculas)
 app.get('/api/painel', exigirSenha, async (req, res) => {
     try {
         const historicoRes = await pool.query(
@@ -85,10 +85,10 @@ app.get('/api/painel', exigirSenha, async (req, res) => {
         );
 
         const resumoRes = await pool.query(
-            `SELECT nome, COUNT(*) as "pontosPendentes" 
+            `SELECT INITCAP(LOWER(nome)) as nome, COUNT(*) as "pontosPendentes" 
              FROM pontos 
              WHERE pago = FALSE AND desconsiderado = FALSE 
-             GROUP BY nome`
+             GROUP BY INITCAP(LOWER(nome))`
         );
 
         const resumo = resumoRes.rows.map((item, index) => ({
@@ -105,6 +105,27 @@ app.get('/api/painel', exigirSenha, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ erro: 'Erro ao carregar dados do painel.' });
+    }
+});
+
+// 3. ROTA: Marcar como Pago (Compatível com qualquer variação de caixa)
+app.post('/api/pagar', exigirSenha, async (req, res) => {
+    const { nome } = req.body;
+
+    if (!nome) {
+        return res.status(400).json({ erro: 'Nome do funcionário é obrigatório.' });
+    }
+
+    try {
+        await pool.query(
+            `UPDATE pontos SET pago = TRUE WHERE INITCAP(LOWER(nome)) = INITCAP(LOWER($1)) AND pago = FALSE AND desconsiderado = FALSE`,
+            [nome]
+        );
+
+        res.json({ mensagem: 'Pagamento registrado com sucesso!' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ erro: 'Erro ao registrar pagamento.' });
     }
 });
 
