@@ -32,9 +32,14 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// 1. ROTA: Bater Ponto (Funcionário com Selfie)
+// 1. ROTA: Bater Ponto (Funcionário com Selfie e Logs de Diagnóstico)
 app.post('/api/ponto', async (req, res) => {
     const { nome, selfie } = req.body;
+
+    // Logs para auditar exatamente o que está chegando ao servidor
+    console.log("--- NOVO PEDIDO DE PONTO ---");
+    console.log("Nome recebido:", nome);
+    console.log("Tem selfie?", selfie ? "Sim (tamanho: " + selfie.length + ")" : "NÃO, veio vazia/undefined");
 
     if (!nome || !nome.trim()) {
         return res.status(400).json({ erro: 'Nome é obrigatório.' });
@@ -64,6 +69,7 @@ app.post('/api/ponto', async (req, res) => {
             [nome.trim(), selfie]
         );
 
+        console.log("Ponto e selfie salvos com sucesso para:", nome);
         res.status(201).json({ mensagem: 'Ponto batido com sucesso!' });
     } catch (err) {
         console.error("ERRO COMPLETO AO REGISTRAR PONTO:", err);
