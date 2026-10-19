@@ -32,14 +32,44 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// 1. ROTA: Bater Ponto (Funcionário com Selfie e Logs de Diagnóstico)
+// --- GESTÃO DE FUNCIONÁRIOS AUTORIZADOS ---
+
+app.get('/api/funcionarios', exigirSenha, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, nome FROM funcionarios ORDER BY nome ASC');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ erro: 'Erro ao buscar funcionários.' });
+    }
+});
+
+app.post('/api/funcionarios', exigirSenha, async (req, res) => {
+    const { nome } = req.body;
+    if (!nome || !nome.trim()) return res.status(400).json({ erro: 'Nome é obrigatório.' });
+
+    const nomeFormatado = nome.trim();
+    try {
+        await pool.query('INSERT INTO funcionarios (nome) VALUES ($1)', [nomeFormatado]);
+        res.status(201).json({ mensagem: 'Funcionário cadastrado com sucesso!' });
+    } catch (err) {
+        res.status(400).json({ erro: 'Funcionário já cadastrado ou erro no servidor.' });
+    }
+});
+
+app.delete('/api/funcionarios/:id', exigirSenha, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query('DELETE FROM funcionarios WHERE id = $1', [id]);
+        res.json({ mensagem: 'Funcionário removido com sucesso!' });
+    } catch (err) {
+        res.status(500).json({ erro: 'Erro ao remover funcionário.' });
+    }
+});
+
+// --- ROTA DE PONTO ---
+
 app.post('/api/ponto', async (req, res) => {
     const { nome, selfie } = req.body;
-
-    // Logs para auditar exatamente o que está chegando ao servidor
-    console.log("--- NOVO PEDIDO DE PONTO ---");
-    console.log("Nome recebido:", nome);
-    console.log("Tem selfie?", selfie ? "Sim (tamanho: " + selfie.length + ")" : "NÃO, veio vazia/undefined");
 
     if (!nome || !nome.trim()) {
         return res.status(400).json({ erro: 'Nome é obrigatório.' });
@@ -49,15 +79,28 @@ app.post('/api/ponto', async (req, res) => {
         return res.status(400).json({ erro: 'A selfie é obrigatória.' });
     }
 
-    const nomeFormatado = nome.trim().toLowerCase();
+    const nomeFormatado = nome.trim();
 
     try {
+        // Valida se o nome está na lista de funcionários autorizados pelo gestor (case-insensitive)
+        const funcCheck = await pool.query(
+            `SELECT * FROM funcionarios WHERE LOWER(nome) = LOWER($1)`,
+            [nomeFormatado]
+        );
+
+        if (funcCheck.rows.length === 0) {
+            return res.status(400).json({ erro: 'Nome não autorizado! Verifique com o gestor.' });
+        }
+
+        // Usa o nome exato cadastrado pelo gestor para manter o padrão
+        const nomeOficial = funcCheck.rows[0].nome;
+
         const hojeCheck = await pool.query(
             `SELECT * FROM pontos 
-             WHERE LOWER(nome) = $1 
+             WHERE LOWER(nome) = LOWER($1) 
              AND DATE(data_hora) = CURRENT_DATE 
              AND desconsiderado = FALSE`,
-            [nomeFormatado]
+            [nomeOficial]
         );
 
         if (hojeCheck.rows.length > 0) {
@@ -66,10 +109,9 @@ app.post('/api/ponto', async (req, res) => {
 
         await pool.query(
             `INSERT INTO pontos (nome, data_hora, pago, desconsiderado, selfie) VALUES ($1, NOW(), FALSE, FALSE, $2)`,
-            [nome.trim(), selfie]
+            [nomeOficial, selfie]
         );
 
-        console.log("Ponto e selfie salvos com sucesso para:", nome);
         res.status(201).json({ mensagem: 'Ponto batido com sucesso!' });
     } catch (err) {
         console.error("ERRO COMPLETO AO REGISTRAR PONTO:", err);
@@ -77,18 +119,21 @@ app.post('/api/ponto', async (req, res) => {
     }
 });
 
-// 2. ROTA: Dados do Painel do Pai (Agrupa ignorando maiúsculas/minúsculas)
+// --- PAINEL DO GESTOR ---
+
 app.get('/api/painel', exigirSenha, async (req, res) => {
     try {
+        const funcionariosRes = await pool.query('SELECT id, nome FROM funcionarios ORDER BY nome ASC');
+        
         const historicoRes = await pool.query(
             `SELECT id, nome, data_hora as "dataHora", pago, desconsiderado, selfie FROM pontos ORDER BY data_hora DESC`
         );
 
         const resumoRes = await pool.query(
-            `SELECT INITCAP(LOWER(nome)) as nome, COUNT(*) as "pontosPendentes" 
+            `SELECT nome, COUNT(*) as "pontosPendentes" 
              FROM pontos 
              WHERE pago = FALSE AND desconsiderado = FALSE 
-             GROUP BY INITCAP(LOWER(nome))`
+             GROUP BY nome`
         );
 
         const resumo = resumoRes.rows.map((item, index) => ({
@@ -99,6 +144,7 @@ app.get('/api/painel', exigirSenha, async (req, res) => {
         }));
 
         res.json({
+            funcionarios: funcionariosRes.rows,
             resumo,
             historico: historicoRes.rows
         });
@@ -108,28 +154,6 @@ app.get('/api/painel', exigirSenha, async (req, res) => {
     }
 });
 
-// 3. ROTA: Marcar como Pago (Compatível com qualquer variação de caixa)
-app.post('/api/pagar', exigirSenha, async (req, res) => {
-    const { nome } = req.body;
-
-    if (!nome) {
-        return res.status(400).json({ erro: 'Nome do funcionário é obrigatório.' });
-    }
-
-    try {
-        await pool.query(
-            `UPDATE pontos SET pago = TRUE WHERE INITCAP(LOWER(nome)) = INITCAP(LOWER($1)) AND pago = FALSE AND desconsiderado = FALSE`,
-            [nome]
-        );
-
-        res.json({ mensagem: 'Pagamento registrado com sucesso!' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ erro: 'Erro ao registrar pagamento.' });
-    }
-});
-
-// 3. ROTA: Marcar como Pago
 app.post('/api/pagar', exigirSenha, async (req, res) => {
     const { nome } = req.body;
 
@@ -150,7 +174,6 @@ app.post('/api/pagar', exigirSenha, async (req, res) => {
     }
 });
 
-// 4. ROTA: Desconsiderar Ponto Falso
 app.patch('/api/ponto/:id/desconsiderar', exigirSenha, async (req, res) => {
     const { id } = req.params;
 
